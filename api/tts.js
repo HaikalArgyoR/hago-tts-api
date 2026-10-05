@@ -9,43 +9,54 @@ export default async function handler(request) {
   
   if (!text) return new Response("Teks kosong", { status: 400 });
 
-  const apiKey = process.env.VOICERSS_API_KEY;
+  const apiKey = process.env.ELEVENLABS_API_KEY;
 
   if (!apiKey) {
-    return new Response("ERROR: Variable VOICERSS_API_KEY belum diatur di Vercel Environment Variables", { 
+    return new Response("ERROR: Variable ELEVENLABS_API_KEY belum diatur", { 
       status: 500,
       headers: { "Content-Type": "text/plain" }
     });
   }
 
-  // Menggunakan HTTPS
-  const ttsUrl = `https://api.voicerss.org/?key=${apiKey}&hl=id-id&v=Budi&c=MP3&f=24khz_16bit_mono&src=${encodeURIComponent(text)}`;
+  // Voice ID default (Contoh: pNInz6obpgDQGcFmaJgB adalah suara "Adam")
+  // Anda bisa menggantinya dengan Voice ID lain dari dashboard ElevenLabs
+  const voiceId = url.searchParams.get("v") || "pNInz6obpgDQGcFmaJgB";
+
+  const ttsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
   try {
-    const response = await fetch(ttsUrl);
+    const response = await fetch(ttsUrl, {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: text,
+        model_id: "eleven_multilingual_v2", // Model terbaik untuk Bahasa Indonesia
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75
+        }
+      })
+    });
 
     if (!response.ok) {
-      return new Response("Gagal terhubung ke VoiceRSS", { status: response.status });
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    
-    // Deteksi jika VoiceRSS mengembalikan teks error
-    const textDecoder = new TextDecoder();
-    const responseText = textDecoder.decode(arrayBuffer);
-
-    if (responseText.startsWith("ERROR:")) {
-      return new Response(`VoiceRSS ${responseText}`, { 
-        status: 400,
+      const errorText = await response.text();
+      return new Response(`Error ElevenLabs: ${errorText}`, { 
+        status: response.status,
         headers: { "Content-Type": "text/plain" }
       });
     }
+
+    const arrayBuffer = await response.arrayBuffer();
 
     return new Response(arrayBuffer, {
       headers: { 
         "Content-Type": "audio/mpeg", 
         "Content-Length": arrayBuffer.byteLength.toString(),
-        "Content-Disposition": 'inline; filename="hago_budi.mp3"'
+        "Content-Disposition": 'inline; filename="hago_elevenlabs.mp3"'
       }
     });
   } catch (e) {
