@@ -1,20 +1,31 @@
-export default async function handler(req, res) {
-  const { text } = req.query;
+// Menggunakan Vercel Edge Runtime untuk performa ultra-cepat dan streaming
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(req) {
+  // Mengambil parameter dari URL di Edge Runtime
+  const url = new URL(req.url);
+  const text = url.searchParams.get("text");
 
   if (!text) {
-    return res.status(400).json({ error: "Parameter 'text' wajib diisi." });
+    return new Response(JSON.stringify({ error: "Parameter 'text' wajib diisi." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  // Mengambil Voice ID dari Environment Variable Vercel atau menggunakan fallback ID
   const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 
   if (!apiKey) {
-    return res.status(500).json({ error: "ELEVENLABS_API_KEY belum dikonfigurasi di Vercel." });
+    return new Response(JSON.stringify({ error: "API Key belum dikonfigurasi." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 
   try {
-    // optimize_streaming_latency=2 dan mp3_22050_32 untuk proses cepat dan file audio ringan
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?optimize_streaming_latency=2&output_format=mp3_22050_32`,
       {
@@ -33,15 +44,22 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: errorText });
+      return new Response(errorText, { status: response.status });
     }
 
-    const audioBuffer = await response.arrayBuffer();
+    // LANGSUNG STREAMING DATA KE ESP32 (Mencegah readSpace 0)
+    return new Response(response.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-cache",
+      }
+    });
 
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "no-cache");
-    return res.status(200).send(Buffer.from(audioBuffer));
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }
