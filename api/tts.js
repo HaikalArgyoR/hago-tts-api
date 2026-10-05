@@ -1,5 +1,32 @@
-try {
-    // 1. Hapus optimize_streaming_latency=2 agar file MP3 utuh dan lebih stabil
+// Menggunakan Vercel Edge Runtime untuk performa ultra-cepat
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(req) {
+  // Mengambil parameter dari URL di Edge Runtime
+  const url = new URL(req.url);
+  const text = url.searchParams.get("text");
+
+  if (!text) {
+    return new Response(JSON.stringify({ error: "Parameter 'text' wajib diisi." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
+
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "API Key belum dikonfigurasi." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  try {
+    // Memanggil API ElevenLabs TTS
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
@@ -21,17 +48,23 @@ try {
       return new Response(errorText, { status: response.status });
     }
 
-    // 2. Tunggu seluruh buffer audio selesai di-generate oleh ElevenLabs
+    // Ambil seluruh buffer audio di memori Edge Vercel
     const arrayBuffer = await response.arrayBuffer();
 
-    // 3. Kirimkan ke ESP32 LENGKAP dengan Content-Length
+    // Kirimkan ke ESP32 lengkap dengan Content-Length
     return new Response(arrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
         "Cache-Control": "no-cache",
-        "Content-Length": arrayBuffer.byteLength.toString(), // ESP32 butuh ini agar tidak terpotong!
+        "Content-Length": arrayBuffer.byteLength.toString(), // Kunci pencegah terpotong pada ESP32
       }
     });
 
-  } catch (error) { ... }
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
