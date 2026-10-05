@@ -1,33 +1,7 @@
-// Menggunakan Vercel Edge Runtime untuk performa ultra-cepat dan streaming
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(req) {
-  // Mengambil parameter dari URL di Edge Runtime
-  const url = new URL(req.url);
-  const text = url.searchParams.get("text");
-
-  if (!text) {
-    return new Response(JSON.stringify({ error: "Parameter 'text' wajib diisi." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
-
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "API Key belum dikonfigurasi." }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
-  try {
+try {
+    // 1. Hapus optimize_streaming_latency=2 agar file MP3 utuh dan lebih stabil
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?optimize_streaming_latency=2&output_format=mp3_22050_32`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
       {
         method: "POST",
         headers: {
@@ -47,19 +21,17 @@ export default async function handler(req) {
       return new Response(errorText, { status: response.status });
     }
 
-    // LANGSUNG STREAMING DATA KE ESP32 (Mencegah readSpace 0)
-    return new Response(response.body, {
+    // 2. Tunggu seluruh buffer audio selesai di-generate oleh ElevenLabs
+    const arrayBuffer = await response.arrayBuffer();
+
+    // 3. Kirimkan ke ESP32 LENGKAP dengan Content-Length
+    return new Response(arrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
         "Cache-Control": "no-cache",
+        "Content-Length": arrayBuffer.byteLength.toString(), // ESP32 butuh ini agar tidak terpotong!
       }
     });
 
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-}
+  } catch (error) { ... }
