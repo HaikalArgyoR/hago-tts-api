@@ -9,23 +9,37 @@ export default async function handler(request) {
   
   if (!text) return new Response("Teks kosong", { status: 400 });
 
-  // Mengambil API Key secara aman dari Environment Variables Vercel
   const apiKey = process.env.VOICERSS_API_KEY;
 
   if (!apiKey) {
-    return new Response("API Key VoiceRSS belum diatur di Vercel", { status: 500 });
+    return new Response("ERROR: Variable VOICERSS_API_KEY belum diatur di Vercel Environment Variables", { 
+      status: 500,
+      headers: { "Content-Type": "text/plain" }
+    });
   }
 
-  const ttsUrl = `http://api.voicerss.org/?key=${apiKey}&hl=id-id&v=Budi&c=MP3&f=24khz_16bit_mono&src=${encodeURIComponent(text)}`;
+  // Menggunakan HTTPS
+  const ttsUrl = `https://api.voicerss.org/?key=${apiKey}&hl=id-id&v=Budi&c=MP3&f=24khz_16bit_mono&src=${encodeURIComponent(text)}`;
 
   try {
     const response = await fetch(ttsUrl);
 
     if (!response.ok) {
-      return new Response("Gagal mengambil audio dari VoiceRSS", { status: response.status });
+      return new Response("Gagal terhubung ke VoiceRSS", { status: response.status });
     }
 
     const arrayBuffer = await response.arrayBuffer();
+    
+    // Deteksi jika VoiceRSS mengembalikan teks error
+    const textDecoder = new TextDecoder();
+    const responseText = textDecoder.decode(arrayBuffer);
+
+    if (responseText.startsWith("ERROR:")) {
+      return new Response(`VoiceRSS ${responseText}`, { 
+        status: 400,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
 
     return new Response(arrayBuffer, {
       headers: { 
