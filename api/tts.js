@@ -25,10 +25,18 @@ export default async function handler(req) {
     });
   }
 
-  try {
-    // Memanggil API ElevenLabs TTS
+try {
+    // Memastikan ada titik di akhir teks agar ElevenLabs menghasilkan hening (trailing silence)
+    // Ini mencegah suara terpotong paksa di ujung kalimat
+    let safeText = text.trim();
+    if (!safeText.endsWith('.') && !safeText.endsWith('!') && !safeText.endsWith('?')) {
+      safeText += "."; 
+    }
+    safeText += " ..."; // Tambahan jeda napas (silence padding)
+
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      // UBAH format menjadi mp3_44100_128 (Dekoder ESP32 lebih stabil di bitrate ini)
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
       {
         method: "POST",
         headers: {
@@ -37,7 +45,7 @@ export default async function handler(req) {
           "xi-api-key": apiKey,
         },
         body: JSON.stringify({
-          text: text,
+          text: safeText, // Gunakan teks yang sudah diberi padding
           model_id: "eleven_multilingual_v2"
         }),
       }
@@ -48,16 +56,15 @@ export default async function handler(req) {
       return new Response(errorText, { status: response.status });
     }
 
-    // Ambil seluruh buffer audio di memori Edge Vercel
     const arrayBuffer = await response.arrayBuffer();
 
-    // Kirimkan ke ESP32 lengkap dengan Content-Length
     return new Response(arrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
         "Cache-Control": "no-cache",
-        "Content-Length": arrayBuffer.byteLength.toString(), // Kunci pencegah terpotong pada ESP32
+        "Content-Length": arrayBuffer.byteLength.toString(),
+        "Connection": "close" // Beri tahu ESP32 bahwa stream benar-benar selesai
       }
     });
 
